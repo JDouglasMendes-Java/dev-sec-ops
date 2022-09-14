@@ -1,6 +1,6 @@
 version: '3'
 services:    
-    db-postgres-compose:
+    db-postgres:
         container_name: db-postgres
         image: postgres
         environment:
@@ -12,7 +12,7 @@ services:
         networks:
             - db-network
         
-    client-pgadmin-compose:
+    client-pgadmin:
         image: dpage/pgadmin4
         container_name: client-pgadmin
         environment:
@@ -21,72 +21,100 @@ services:
         ports:
             - "16543:80"
         depends_on:
-            - db-postgres-compose
+            - db-postgres
         networks:
             - db-network
 
-    default-arch:
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: prometheus
+        restart: unless-stopped
+        volumes:
+            - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+            - ./prometheus/prometheus_data:/prometheus
+        command:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--web.console.libraries=/etc/prometheus/console_libraries'
+            - '--web.console.templates=/etc/prometheus/consoles'
+            - '--web.enable-lifecycle'
+        ports:
+            - 4000:9090
+        networks:
+            - monit
+            - default-network
+        depends_on:
+            - client-pgadmin
+    grafana:
+        image: grafana/grafana
+        container_name: grafana
+        volumes:
+            - ./grafana:/var/lib/grafana
+        restart: unless-stopped
+        ports:
+            - 3000:3000
+        networks:
+            - monit
+            - default-network            
+        depends_on:
+            - prometheus
+            
+    ms-service-register:
+        image: service-register-img:latest
+        container_name: ms-service-register
+        restart: unless-stopped
+        ports:
+            - 9090:9090
+        depends_on:
+            - grafana
+        networks:
+            - default-network
+            - db-network
+            - monit
+        healthcheck:
+            test: "curl -sS http://ms-service-register:9090/actuator/health"
+            interval: 1s
+            timeout: 30s
+            retries: 60
+
+    ms-gateway:
+        image: ms-gateway-img:latest
+        container_name: ms-gateway
+        restart: unless-stopped
+        ports:
+            - 9091:9091
+        depends_on:
+            - ms-service-register
+        networks:
+            - default-network
+            - db-network
+            - monit
+        healthcheck:
+            test: "curl -sS http://ms-gateway:9091/actuator/health"
+            interval: 1s
+            timeout: 30s
+            retries: 60
+    ms-products:
         container_name: ms-products
         image: ms-products-img:latest
         ports:
-            - 8091:8091
+            - 9092:9092
         depends_on:
-            - client-pgadmin-compose
+            - ms-gateway
         networks:
             - default-network
             - db-network
             - monit
         healthcheck:
-            test: "curl -sS http://default-arch:8091/actuator/health"
+            test: "curl -sS http://ms-products:9092/actuator/health"
             interval: 1s
             timeout: 30s            
-            retries: 60       
-    prometheus-java:
-        image: prom/prometheus:latest
-        container_name: prometheus-java
-        restart: unless-stopped
-        volumes:
-        - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-        - ./prometheus/prometheus_data:/prometheus
-        command:
-        - '--config.file=/etc/prometheus/prometheus.yml'
-        - '--storage.tsdb.path=/prometheus'
-        - '--web.console.libraries=/etc/prometheus/console_libraries'
-        - '--web.console.templates=/etc/prometheus/consoles'
-        - '--web.enable-lifecycle'
-        ports:
-        - 9090:9090
-        networks:
-        - monit
-        - default-network
-        depends_on:
-        - default-arch
-
-    service-register-ms:
-        image: service-register:latest
-        container_name: service-register-ms
-        restart: unless-stopped
-        ports:
-            - 9091:9081
-        depends_on:
-            - prometheus-java
-        networks:
-            - default-network
-            - db-network
-            - monit
-        healthcheck:
-            test: "curl -sS http://service-register-ms:9091/actuator/health"
-            interval: 1s
-            timeout: 30s            
-            retries: 60 
-        
-
+            retries: 60
+    
 networks:
     default-network:
         driver: bridge
     db-network:
         driver: bridge
     monit:
-        driver: bridge
-
-    
+        driver: bridge   

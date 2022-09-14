@@ -1,16 +1,29 @@
 global:
   scrape_interval: 5s
 scrape_configs:
-- job_name: prometheus-java
+- job_name: prometheus
   scrape_interval: 15s
   scrape_timeout: 10s
   metrics_path: /metrics
   scheme: http
   static_configs:
   - targets:
-    - prometheus-java:9090
-- job_name: default-arch
+    - prometheus:4000
+    
+- job_name: ms-products
   metrics_path: /actuator/prometheus
   static_configs:
   - targets:
-    - default-arch:8091
+    - ms-products:9092
+    
+- job_name: ms-service-register
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - ms-service-register:9090
+     
+- job_name: ms-gateway
+  metrics_path: /actuator/prometheus
+  static_configs:
+  - targets:
+    - ms-gateway:9091          
